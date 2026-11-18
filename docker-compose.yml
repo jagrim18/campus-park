@@ -1,0 +1,46 @@
+services:
+  mongodb:
+    image: mongo:7
+    container_name: smartpark-mongo
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    command: ["--replSet", "rs0", "--bind_ip_all"]
+    volumes:
+      - mongo_data:/data/db
+    healthcheck:
+      test: echo "try { rs.status() } catch (err) { rs.initiate({_id:'rs0',members:[{_id:0,host:'mongodb:27017'}]}) }" | mongosh --port 27017 --quiet
+      interval: 10s
+      timeout: 10s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: smartpark-backend
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    environment:
+      - PORT=5000
+      - MONGO_URI=mongodb://mongodb:27017/smartpark?replicaSet=rs0
+      - JWT_SECRET=super_secret_smartpark_jwt_key
+      - CLIENT_ORIGIN=http://localhost:5173
+    depends_on:
+      mongodb:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: smartpark-frontend
+    restart: unless-stopped
+    ports:
+      - "5173:80"
+    depends_on:
+      - backend
+
+volumes:
+  mongo_data:
